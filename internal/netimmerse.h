@@ -2103,8 +2103,8 @@ public:
 
 	bool			switchState;	// 9C
 	UInt8			effectType;		// 9D
-	bool			resetTraits;	// 9E	JIP only
-	UInt8			extraFlags;		// 9F	JIP only
+	bool			castShadows;	// 9E
+	bool			canCarry;		// 9F
 	SInt32			iIndex;			// A0
 	UInt32			pushCount;		// A4
 	UInt32			revID;			// A8
@@ -2112,41 +2112,48 @@ public:
 	DList<NiNode>	unaffectedNodes;// B8
 };
 
+enum {
+	kLightExtra_UpdateTranslate = 1 << 0,
+	kLightExtra_Attached		= 1 << 7,
+};
+
+struct JIPLightData {
+	//	JIP Only
+	float			flt0FC;
+	NiVector4		vector100;
+	bool 			resetTraits;
+	UInt8			flags;
+};
+
 // F0
 class NiLight : public NiDynamicEffect
 {
 public:
+
 	float			fadeValue;			// C4
 	NiColor			ambientColor;		// C8
 	NiColor			diffuseColor;		// D4
+	float			radius;				// 0E0 - THIS IS SPECULAR
+	float			radius0E4;			// 0E4
+	TESObjectLIGH*	baseLight;			// 0E8	JIP only
+	JIPLightData*	extraData;			// 0EC - RENDERER DATA
 };
 
 // FC (JIP: 110)
 class NiPointLight : public NiLight
 {
 public:
-	float			radius;			// 0E0
-	float			radius0E4;		// 0E4
-	TESObjectLIGH	*baseLight;		// 0E8	JIP only
-	NiObject		*obj0EC;		// 0EC
-	NiVector3		vector0F0;		// 0F0	Used for animated lights
-	//	JIP Only
-	float			flt0FC;			// 0FC
-	NiVector4		vector100;		// 100
+
+	NiVector3		lightOffset;		// 0F0	Used for animated lights - LIGHT OFFSET
 
 	__forceinline static NiPointLight *Create() {return CdeclCall<NiPointLight*>(0xA7D6E0);}
 };
-static_assert(sizeof(NiPointLight) == 0x110);
+static_assert(sizeof(NiPointLight) == 0xFC);
 
 // 114
-class NiSpotLight : public NiLight
+class NiSpotLight : public NiPointLight
 {
 public:
-	float			radius;			// 0E0
-	float			radius0E4;		// 0E4
-	TESObjectLIGH	*baseLight;		// 0E8	JIP only
-	NiObject		*obj0EC;		// 0EC
-	NiVector3		vector0F0;		// 0F0	Used for animated lights
 	NiVector3		direction;		// 0FC
 	float			outerSpotAngle;	// 108
 	float			innerSpotAngle;	// 10C

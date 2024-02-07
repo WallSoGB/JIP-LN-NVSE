@@ -101,7 +101,7 @@ void DoPreLoadGameHousekeeping()
 	}
 
 	for (auto lgtIter = s_activePtLights->Begin(); lgtIter; ++lgtIter)
-		if ((lgtIter->extraFlags & 0x80) && lgtIter->m_parent)
+		if ((lgtIter->extraData->flags & kLightExtra_Attached) && lgtIter->m_parent)
 			lgtIter->m_parent->RemoveObject(*lgtIter);
 
 	if (!s_swapObjLODMap->Empty())

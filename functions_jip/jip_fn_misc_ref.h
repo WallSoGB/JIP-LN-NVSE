@@ -1086,8 +1086,8 @@ bool Cmd_SetNifBlockTranslation_Execute(COMMAND_ARGS)
 					((NiNode*)niBlock)->ResetCollision();
 			}
 			else if IS_TYPE(niBlock, NiPointLight)
-				if (NiPointLight *ptLight = (NiPointLight*)niBlock; ptLight->extraFlags & 1)
-					ptLight->vector100 = transltn;
+				if (NiPointLight *ptLight = (NiPointLight*)niBlock; ptLight->extraData->flags & 1)
+					ptLight->extraData->vector100 = transltn;
 			niBlock->UpdateDownwardPass(kNiUpdateData, 0);
 		}
 	return true;
@@ -1479,7 +1479,7 @@ bool Cmd_AttachLight_Execute(COMMAND_ARGS)
 		{
 			NiPointLight *pointLight = CreatePointLight(lightForm, objNode);
 			pointLight->LocalTranslate() = offsetMod;
-			pointLight->extraFlags |= 0x80;
+			pointLight->extraData->flags |= 0x80;
 			*result = 1;
 		}
 	return true;
@@ -1494,7 +1494,7 @@ bool Cmd_RemoveLight_Execute(COMMAND_ARGS)
 			NiPointLight *pointLight;
 			for (auto iter = objNode->m_children.Begin(); iter; ++iter)
 			{
-				if (!(pointLight = (NiPointLight*)*iter) || NOT_TYPE(pointLight, NiPointLight) || !(pointLight->extraFlags & 0x80))
+				if (!(pointLight = (NiPointLight*)*iter) || NOT_TYPE(pointLight, NiPointLight) || !(pointLight->extraData->flags & 0x80))
 					continue;
 				objNode->RemoveObject(pointLight);
 				break;

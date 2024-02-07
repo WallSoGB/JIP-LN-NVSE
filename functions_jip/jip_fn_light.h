@@ -37,6 +37,17 @@ bool Cmd_GetLightTraitNumeric_Execute(COMMAND_ARGS)
 	return true;
 }
 
+#if 1
+void __fastcall MarkLightModified(TESObjectLIGH* lightForm) {
+	auto lights = s_activePtLights->Data();
+	for (UInt32 i = 0; i < s_activePtLights->Size(); i++) {
+		if (lights[i] && lights[i]->baseLight == lightForm) {
+			lights[i]->extraData->resetTraits = true;
+			return;
+		}
+	}
+}
+#else
 __declspec(naked) void __fastcall MarkLightModified(TESObjectLIGH *lightForm)
 {
 	__asm
@@ -64,6 +75,7 @@ __declspec(naked) void __fastcall MarkLightModified(TESObjectLIGH *lightForm)
 		retn
 	}
 }
+#endif
 
 bool Cmd_SetLightTraitNumeric_Execute(COMMAND_ARGS)
 {

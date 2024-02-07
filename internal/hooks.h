@@ -2747,6 +2747,20 @@ __declspec(naked) void ApplyActorVelocityHook()
 	}
 }
 
+// if Jazz were here he'd make some magic ASM jump or something
+NiLight* __fastcall CreateNiLight(NiLight* light) {
+	ThisCall(0xA71F60, light);
+	light->extraData = Game_HeapAlloc<JIPLightData>();
+	memset(light->extraData, 0, sizeof(JIPLightData));
+	return light;
+}
+
+void __fastcall NiDX9LightManager__RemoveLight(void* manager, void*, NiLight* light) {
+	Game_HeapFree(light->extraData);
+	light->extraData = nullptr;
+	ThisCall(0xE8BD40, manager, light);
+}
+
 __declspec(naked) bool __fastcall TESObjectLIGHSetEDIDHook(TESObjectLIGH *lightForm, int, const char *EDID)
 {
 	__asm
@@ -2920,7 +2934,7 @@ __declspec(naked) NiPointLight* __fastcall DestroyNiPointLightHook(NiPointLight 
 		jnz		done
 		test	byte ptr [esp+8], 1
 		jz		done
-		push	0x110
+		push	0xFC;
 		push	esi
 		CALL_EAX(0xAA1460)
 		add		esp, 8
@@ -2931,6 +2945,37 @@ __declspec(naked) NiPointLight* __fastcall DestroyNiPointLightHook(NiPointLight 
 	}
 }
 
+#if 1
+NiPointLight* __fastcall CreatePointLight(TESObjectLIGH* lightForm, NiNode* destParent) {
+	NiPointLight* light = nullptr;
+	for (UInt32 i = 0; i < destParent->m_children.firstFreeEntry; i++) {
+		DWORD* obj = reinterpret_cast<DWORD*>(destParent->m_children.data[i]);
+		if (obj && obj[0] == 0x109DD0C) { // NiPointLight::`vftable'
+			light = (NiPointLight*)obj;
+			break;
+		}
+	}
+
+	if (!light) {
+		light = StdCall<NiPointLight*>(0xA7D6E0); // NiPointLight::CreateObject
+		char name [20];
+		memcpy(name, "PtLight ", 8);
+		UIntToHex(&name[9], lightForm->refID);
+		light->SetName(name);
+	}
+
+	light->baseLight = lightForm;
+	light->m_flags |= (lightForm->lightFlags & 0x20) != 0;
+	light->extraData->resetTraits = true;
+
+	if ((light->m_flags & 0x40000000) != 0)
+		return light;
+
+	light->m_flags |= 0x60;
+	s_activePtLights->Append(light);
+	return light;
+}
+#else
 __declspec(naked) NiPointLight* __fastcall CreatePointLight(TESObjectLIGH *lightForm, NiNode *destParent)
 {
 	__asm
@@ -2993,6 +3038,7 @@ __declspec(naked) NiPointLight* __fastcall CreatePointLight(TESObjectLIGH *light
 		retn
 	}
 }
+#endif
 
 __declspec(naked) void __fastcall SetLightProperties(NiPointLight *ptLight, TESObjectLIGH *lightForm)
 {
@@ -4014,6 +4060,61 @@ __declspec(naked) void __fastcall UpdateAnimatedLightHook(TESObjectLIGH *lightFo
 	}
 }
 
+#if 1
+static void __fastcall UpdateAnimatedLightsHook(TES* pTES) {
+	ThisCall(0x455640, pTES);
+
+	UInt32 lightCount = s_activePtLights->Size();
+	if (!lightCount)
+		return;
+
+	LightCS* lightCS = (LightCS*)0x11F9EA0;
+	lightCS->Enter();
+
+	auto iter = s_activePtLights->Data();
+	for (UInt32 i = 0; i < lightCount; i++) {
+		NiPointLight* light = iter[i];
+		if (!light)
+			continue;
+
+		if (light->m_parent) {
+			if (light->m_flags & NiAVObject::kNiFlag_Culled)
+				continue;
+
+			TESObjectLIGH* ref = light->baseLight;
+			if (light->extraData->resetTraits) {
+				light->extraData->resetTraits = false;
+				SetLightProperties(light, ref);
+				if (light->extraData->flags & 1) {
+					light->extraData->flags &= ~1;
+					light->m_transformLocal.translate = light->extraData->vector100;
+				}
+			}
+
+			if (light->m_uiRefCount == 1) {
+				LightingData* sceneLight =  CdeclCall<LightingData*>(0xAA13E0, sizeof(LightingData));
+				ThisCall<LightingData*>(0xB9FDA0, sceneLight);
+				sceneLight->isPointLight = true;
+				InterlockedIncrement(&sceneLight->m_uiRefCount);
+				sceneLight->light = light;
+				sceneLight->isDynamic = true;
+				sceneLight->portalGraph = g_shadowSceneNode->portalGraph;
+				ThisCall(0xB5ECA0, g_shadowSceneNode, sceneLight); // AddQueuedLight
+			}
+			else if (ref->lightFlags & 0x19C8) {
+				DoUpdateAnimatedLight(ref, light);
+			}
+
+		}
+		else if (light->m_uiRefCount == 0) {
+			light->Destructor(true);
+			s_activePtLights->RemoveNth(i);
+		}
+	}
+
+	lightCS->Leave();
+}
+#else
 __declspec(naked) void __fastcall UpdateAnimatedLightsHook(TES *pTES)
 {
 	__asm
@@ -4120,6 +4221,7 @@ __declspec(naked) void __fastcall UpdateAnimatedLightsHook(TES *pTES)
 		retn
 	}
 }
+#endif
 
 TESObjectREFR *s_syncPositionRef = nullptr;
 TempObject<NiFixedString> s_syncPositionNode;
@@ -5074,8 +5176,10 @@ __declspec(noinline) void InitJIPHooks()
 	HOOK_INIT_JUMP(ApplyActorVelocity, 0xC6D4E4);
 	HOOK_INIT_CALL(GetModelPath, 0x50FE8B);
 
-	for (UInt32 addr : {0x50DA73, 0x792DC0, 0x7C6F86, 0x7FC4DA, 0x7FD49F, 0x80EA39, 0x81C095, 0x9C6CB6, 0x9C6D3D, 0xA7D6E2, 0xA7D7C3, 0xB5CD2A})
-		SafeWrite32(addr, 0x110);
+	for (UInt32 addr : { 0xA75C26, 0xA7D673, 0xA7D6F6, 0xA7D7D9, 0xA9B346, 0xA9B3E9 })
+		WriteRelCall(addr, (UInt32)CreateNiLight);
+
+	WriteRelCall(0xE71CE0, (UInt32)NiDX9LightManager__RemoveLight);
 
 	SafeWrite8(0x465488, 0xCC);
 	SafeWrite32(0x1029018, (UInt32)TESObjectLIGHSetEDIDHook);
